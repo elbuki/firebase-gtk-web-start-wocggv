@@ -66,9 +66,13 @@ firebase.auth().onAuthStateChanged((user)=> {
 if (user) {
 startRsvpButton.textContent = "LOGOUT";
 guestbookContainer.style.display = 'block';
+subscribeGuestbook();
+subscribeCurrentRSVP(user);
 } else {
 startRsvpButton.textContent = "RSVP";
 guestbookContainer.style.display = 'none';
+unsubscribeGuestbook();
+unsubscribeCurrentRSVP();
 }
 });
 
@@ -84,3 +88,84 @@ form.addEventListener('submit',(event) => {
 
   input.value = '';
 });
+
+function subscribeGuestbook() {  
+  guestbookListener = firebase.firestore()
+    .collection('guestbook')
+    .orderBy('timestamp', 'desc')
+    .onSnapshot((snaps) => {
+      guestbook.innerHTML = '';
+      const messages = snaps.docs.map((doc) => {
+        const { name, text } = doc.data();
+        const entry = document.createElement('p');
+
+        entry.textContent = `${name}: ${text}`;
+
+        return entry;
+      });
+
+      messages.map((msg) => guestbook.appendChild(msg));
+    });
+}
+
+function unsubscribeGuestbook() {
+  if (!guestbookListener) {
+    return;
+  }
+
+  guestbookListener();
+  guestbookListener = null;
+}
+
+function answerInvitation(response) {
+  return () => {
+    const payload = { attending: response };
+    const userDoc = firebase.firestore()
+      .collection('attendees')
+      .doc(firebase.auth().currentUser.uid);
+
+    userDoc.set(payload).catch(console.error);
+  };
+}
+
+rsvpYes.addEventListener('click', answerInvitation(true));
+rsvpNo.addEventListener('click', answerInvitation(false));
+
+firebase.firestore()
+  .collection('attendees')
+  .where('attending', '==', true)
+  .onSnapshot((snap) => { 
+    numberAttending.textContent = `${snap.docs.length} people going.`;
+  });
+
+function subscribeCurrentRSVP(user) {
+  rsvpListener = firebase.firestore()
+    .collection('attendees')
+    .doc(firebase.auth().currentUser.uid)
+    .onSnapshot((snap) => {
+      let response;
+
+      if (!snap || !snap.data()) {
+        return;
+      }
+
+      response = snap.data().attending;
+
+      if (response) {
+        rsvpYes.className = 'clicked';
+        rsvpNo.className = '';
+      } else {
+        rsvpYes.className = '';
+        rsvpNo.className = 'clicked';        
+      }
+    });
+}
+
+function unsubscribeCurrentRSVP() {
+  if (!rsvpListener) {
+    return;
+  }
+
+  rsvpListener();
+  rsvpListener = null;
+}
